@@ -57,7 +57,7 @@ TEST_CONFIG t_configs[] = {
 	3, /* SAMPLING_DURATION; seconds */
 	10, /* SAMPLING_HERTZ; samples per second */
 	"localhost", /*MQTT_HOST*/
-	"dynoWT", /*MQTT_TOPIC*/
+	"dynoWT1x", /*MQTT_TOPIC*/
 	},
 	{
 	"TestAverages", /*label*/
@@ -72,7 +72,7 @@ TEST_CONFIG t_configs[] = {
 	2, /* SAMPLING_DURATION; seconds */
 	10, /* SAMPLING_HERTZ; samples per second */
 	"localhost", /*MQTT_HOST*/
-	"dynoWT", /*MQTT_TOPIC*/
+	"dynoWT1x", /*MQTT_TOPIC*/
 	},
 	/* SAMPLE t_config entry that can be copied used to start a new entry */
 	{

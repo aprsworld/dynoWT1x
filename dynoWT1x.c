@@ -54,7 +54,7 @@ int _loadCell_baud = B230400;
 int _loadCell_serial_fd = -1;
 char loadStarUNIT[32];
 char _loadCell_weight[16]; 
-char *_loadCell_set_units = "K";
+char *_loadCell_set_units = "units LB \r\n";
 
 static u_int8_t  _Remote0buff[32];	/* turn Remote off */
 static u_int8_t  _Remote1buff[32];	/* turn Remote on */
@@ -490,33 +490,6 @@ void clear_serial_input(int fd) {
 	}
 
 }
-#if 0
-static void _query(int serialhd ) {
-
-
-	u_int8_t buff[32] = {};
-
-	buff[0]=0xAA; // STX
-	buff[1]=(0xff & 0x00 ); // address
-	buff[2]=0x5F; // function
-
-	int i,j;
-
-	for ( i = j = 0; 25 > i; i++ ) {
-		j += buff[i];
-	}
-
-	buff[25]= j %256;
-
-	if ( outputDebug ) {
-		_hexdump("_query",buff,26);
-		_check_sum(buff);
-	}
-	clear_serial_input();
-	write(serialhd,buff,26);
-
-}
-#else
 static void _query(void ) {
 	if ( outputDebug ) {
 		_hexdump("_query",_Querybuff,26);
@@ -524,7 +497,6 @@ static void _query(void ) {
 	}
 	write(_serial_fd,_Querybuff,26);
 }
-#endif
 int _loadCell_serial_process(int(*func)(u_int8_t *)) {
 	u_int8_t buff[128] = {};
 	/* etx = \r\n */
@@ -534,7 +506,7 @@ int _loadCell_serial_process(int(*func)(u_int8_t *)) {
 	int ret_val = INCOMPLETE;
 	int retries = 0;
 
-	for ( ;   1 == ret_val && 13 > retries; ) {
+	for ( ;  INCOMPLETE  == ret_val && 13 > retries; ) {
 		rd = read(_loadCell_serial_fd,buff + bytes_received, sizeof(buff) - bytes_received);
 		if ( 1 <outputDebug  && 0 != rd ) {
 			fprintf(stderr,"#  _loadCell_serial_process %3d bytes read.\n",rd);
@@ -543,13 +515,13 @@ int _loadCell_serial_process(int(*func)(u_int8_t *)) {
 			ret_val = -1;
 			break;
 		}
+
+		bytes_received += rd;
 		if ( 2 > bytes_received ) {
 			usleep(5000);
 			retries++;
 			continue;
 		}
-
-		bytes_received += rd;
 		char	*b = buff + bytes_received -2;
 		if ( '\r' != b[0] && '\n' != b[1] ) {
 			usleep(5000);
@@ -649,10 +621,13 @@ New average = old average * (n-1)/n + new value /n
 void dummy(void) {
 }
 void update_average_weight( double d ) {
-	averages.loadCell_n++;
-	averages.AverageWeight *= ( averages.loadCell_n -1);
-	averages.AverageWeight /=  averages.loadCell_n;
-	averages.AverageWeight += d / averages.loadCell_n;
+	if ( averages.n >= averages.loadCell_n ) {
+		snprintf(_loadCell_weight,sizeof(_loadCell_weight),"%0.3lf",d);
+		averages.loadCell_n++;
+		averages.AverageWeight *= ( averages.loadCell_n -1);
+		averages.AverageWeight /=  averages.loadCell_n;
+		averages.AverageWeight += d / averages.loadCell_n;
+	}
 }
 void update_averages( u_int32_t *n,u_int32_t Milliwatts, u_int32_t Millivolts, u_int32_t MilliAmps,
 		u_int32_t *AverageMilliWatts, u_int32_t *AverageMilliVolts, int32_t *AverageMilliAmps ) {
@@ -715,6 +690,8 @@ int process_query(u_int8_t *buff ) {
 	char _averages_meanWatts[16] = {};
 	char _averages_meanVolts[16] = {};
 	char _averages_meanAmps[16] = {};
+	char _averages_meanWeight[16] = {};
+	char _loadCell_n[16] = {};
 
 	snprintf(_commandedRPM,sizeof(_commandedRPM),"%d",commandedRPM);
 	snprintf(_commandedVOLTAGE,sizeof(_commandedVOLTAGE),"%d.%03d",
@@ -728,6 +705,8 @@ int process_query(u_int8_t *buff ) {
 	snprintf(_averages_meanWatts,sizeof(_averages_meanWatts),"%d.%03d",AverageMilliWatts/1000, AverageMilliWatts % 1000);
 	snprintf(_averages_meanVolts,sizeof(_averages_meanVolts),"%d.%03d",AverageMilliVolts/1000, AverageMilliVolts % 1000);
 	snprintf(_averages_meanAmps,sizeof(_averages_meanAmps),"%d.%03d",AverageMilliAmps/10000, AverageMilliAmps % 10000);
+	snprintf(_averages_meanWeight,sizeof(_averages_meanWeight),"%0.6lf",averages.AverageWeight);
+	snprintf(_loadCell_n,sizeof(_loadCell_n),"%d",averages.loadCell_n);
 	
 	if ( 0 != outputDebug ) {
 		fprintf(stderr,"#terminal %s Watts\n",_Watts);
@@ -796,18 +775,20 @@ int process_query(u_int8_t *buff ) {
                 1900 + now->tm_year,1 + now->tm_mon, now->tm_mday,now->tm_hour,now->tm_min,
 		now->tm_sec,time.tv_usec/1000);
 
-	const char *fmt = "\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n";
+	const char *fmt = "\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n";
 	fprintf(fp_stats,fmt,
 			timestamp,_Argv1,_commandedRPM,
 			_commandedVOLTAGE,_Watts,_Volts,_Amps,
 			_StatusFlag0,_StatusFlag1,
-			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps);
+			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps,
+			_loadCell_weight,_averages_meanWeight,_loadCell_n);
 	fflush(fp_stats);
 	fprintf(stderr,fmt,
 			timestamp,_Argv1,_commandedRPM,
 			_commandedVOLTAGE,_Watts,_Volts,_Amps,
 			_StatusFlag0,_StatusFlag1,
-			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps);
+			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps,
+			_loadCell_weight,_averages_meanWeight,_loadCell_n);
 	fflush(stderr);
 	if ( 0 == disable_mqtt_output ) {
 		json_object *jobj = json_object_new_object();
@@ -826,6 +807,9 @@ int process_query(u_int8_t *buff ) {
 		json_object_object_add(jobj,"meanWatts",json_object_new_string(_averages_meanWatts));
 		json_object_object_add(jobj,"meanVolts",json_object_new_string(_averages_meanVolts));
 		json_object_object_add(jobj,"meanAmps",json_object_new_string(_averages_meanAmps));
+		json_object_object_add(jobj,"loadCellWeight",json_object_new_string(_loadCell_weight));
+		json_object_object_add(jobj,"meanWeight",json_object_new_string(_averages_meanWeight));
+		json_object_object_add(jobj,"loadCell-n",json_object_new_string(_loadCell_n));
 		ret_val = _mosquitto_publish_data(jobj);
 		json_object_put(jobj);
 		}
@@ -834,10 +818,12 @@ int process_query(u_int8_t *buff ) {
 }
 void _loadCell_query(void) {
 	if ( -1 < _loadCell_serial_fd ) {
-		/* 
-		fprintf(stderr,"# _loadCell_query()\n"); fflush(stderr);
-		*/
-		write(_loadCell_serial_fd,"W\r\n",3);	/* subject to verification */
+		if ( 2 < outputDebug ) {
+			char timestamp[32] = {};
+			generate_timestamp(timestamp,sizeof(timestamp));
+			fprintf(stderr,"# _loadCell_query() %s\n",timestamp); fflush(stderr);
+		}
+		write(_loadCell_serial_fd,"W\r\n",3);
 	}
 
 }
@@ -848,10 +834,11 @@ static double _atof(const u_int8_t *s ) {
 	return	atof(s);
 }
 int _process_loadCell_query(u_int8_t *buff ) {
-	fprintf(stderr,"# process_loadCell_query()\n"); fflush(stderr);
+	if ( 2 < outputDebug ) {
+		fprintf(stderr,"# process_loadCell_query()\n"); fflush(stderr);
+	}
 	double d = _atof(buff);
 	if ( NAN != d ) {
-		snprintf(_loadCell_weight,sizeof(_loadCell_weight),"0.3lf",d);
 		update_average_weight(d);
 	}
 	
@@ -882,8 +869,6 @@ void daq_acquire(void) {
         alarm(0);
 	fprintf(stderr,"# SAMPLING_DURATION= %d  SAMPLING_HERTZ= %d\n",
 		run_config->SAMPLING_DURATION, run_config->SAMPLING_HERTZ);
-	clear_serial_input(_serial_fd);
-	clear_serial_input(_loadCell_serial_fd);
 	int duration_countdown = 0 + run_config->SAMPLING_DURATION;
 	gettimeofday(&tv,NULL);
 	int j =  NineTenthsMillion - tv.tv_usec;
@@ -892,6 +877,8 @@ void daq_acquire(void) {
 	gettimeofday(&tv,NULL);
 	time_t tv_sec = tv.tv_sec;
 	loadCell_index = query_index = tv.tv_usec / _usec_divider;	/* compute which hertz  in this second */
+	clear_serial_input(_serial_fd);
+	clear_serial_input(_loadCell_serial_fd);
 	_loadCell_query();
         for ( ; (0 == rc) ; ) {
 		gettimeofday(&tv,NULL);
@@ -938,8 +925,7 @@ void daq_acquire(void) {
 		}
 		/* -1 == _loadCell_serial_fd FD_ISSET is never True. */
                 if ( FD_ISSET(_loadCell_serial_fd, &read_fd_set) ) {
-			/* fprintf(stderr,"# _loadCell_serial_fd trigger FD_ISSET\n"); fflush(stderr); */
-			/* future location to process loadCell values */
+			/* fprintf(stderr,"# _loadCell_serial_fd trigger FD_ISSET\n"); fflush(stderr);  */
                         rc = _loadCell_serial_process(_process_loadCell_query);
 		}
         }
@@ -1288,6 +1274,7 @@ static int  _loadCell_get_units( void ) {
 	int rd;
 	int	rc = 0;
 
+#if 0
 	switch ( _loadCell_set_units[0] ) {
 		case 'L':
 			write(_loadCell_serial_fd,"UNIT L\r\n",8);	/* unit of measure */
@@ -1301,6 +1288,9 @@ static int  _loadCell_get_units( void ) {
 		default:
 			fprintf(stderr,"# Bad _loadCell_set_units %s\n",_loadCell_set_units);
 	}
+#else
+	write(_loadCell_serial_fd,_loadCell_set_units,strlen(_loadCell_set_units));
+#endif
 	usleep(100000);
 
 
@@ -1853,9 +1843,10 @@ int main (int argc, char **argv) {
 
 	fprintf(fp_stats,"# %s\n",cmd_line);
 	frun_config();	
+	fprintf(fp_stats,"# %s units\n#\n",loadStarUNIT);
 	fprintf(fp_stats,
 			"# timestamp,argv[1],RPM,loadVolts,Watts,Volts,Amps,statusFlag0,statusFlag1,"
-			"n,meanWatts,meanVolts,meanAmps,\n");
+			"n,meanWatts,meanVolts,meanAmps,weight,meanWeight,n,\n");
 	int rpm;
 	int voltage;
 
