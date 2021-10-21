@@ -44,6 +44,8 @@ static int _overrideFlag;
 char cmd_line[1024];
 #define  run_duration  5
 
+char filename_stats[1024];
+
 char *daq_device= "/dev/ttyLoad0";	/* /dev/ttyLoad0 is the default */
 int _daq_baud = B38400;
 int _serial_fd = -1;
@@ -53,8 +55,15 @@ char *loadCell_device= "/dev/ttyLoadStar0";	/* /dev/ttyLoadStar0 is the default 
 int _loadCell_baud = B230400;
 int _loadCell_serial_fd = -1;
 char loadStarUNIT[32];
+char loadStarTARE[32];
 char _loadCell_weight[16]; 
 char *_loadCell_set_units = "units LB \r\n";
+char *_loadCell_set_tare = "TARE\r\n";
+int tared_flag;
+double loadCell_tare;
+
+char torque[32];
+double torqueFactor = 6.0/12.0;
 
 static u_int8_t  _Remote0buff[32];	/* turn Remote off */
 static u_int8_t  _Remote1buff[32];	/* turn Remote on */
@@ -160,7 +169,7 @@ void connect_callback(struct mosquitto *mosq, void *obj, int result) {
 }
 static struct mosquitto * _mosquitto_startup(void) {
         char clientid[24] = {};
-        int rc = 0;
+        // int rc = 0;
 
 
         fprintf(stderr,"# initializing mosquitto MQTT library\n");
@@ -176,7 +185,7 @@ static struct mosquitto * _mosquitto_startup(void) {
                 mosquitto_connect_callback_set(mosq, connect_callback);
 
                 fprintf(stderr,"# connecting to MQTT server %s:%d\n",mqtt_host,mqtt_port);
-                rc = mosquitto_connect(mosq, mqtt_host, mqtt_port, 60);
+                (void) mosquitto_connect(mosq, mqtt_host, mqtt_port, 60);
 
                 /* start mosquitto network handling loop */
                 mosquitto_loop_start(mosq);
@@ -449,7 +458,7 @@ long  getMicroTime(void) {
 static void _hexdump(char *label, u_int8_t *s, int count ) {
 	int i = 0;
 
-	if ( 1 < outputDebug ) {
+	if ( 10 < outputDebug ) {
 		fprintf(stderr,"# %s\n# ",label);
 		for ( ; count > i; i++, s++ ) {
 			fprintf(stderr,"%02x ",s[0]);
@@ -464,12 +473,12 @@ int _check_sum( u_int8_t *buff ) {
 
 	for ( i = j = 0; 25 > i; i++ ) {
 		j += buff[i];
-		if ( outputDebug  > 2 ) {
+		if ( outputDebug  > 10 ) {
 			fprintf(stderr,"# 0x%02x 0x%02x 0x%02x 0x%02x\n",
 			i,buff[i],j,j % 256);
 		}
 	}
-	if ( outputDebug > 1 ) {
+	if ( outputDebug > 10 ) {
 		fprintf(stderr,"# _check_sum = 0x%02x\n",j % 256);
 	}
 
@@ -480,7 +489,7 @@ void clear_serial_input(int fd) {
 	int rd;
 
 	while ( rd = read(fd,buff , 26 ) ) {
-		if ( outputDebug > 2 ) {
+		if ( outputDebug > 10 ) {
 			fprintf(stderr,"# clear_serial_input %3d bytes read.\n",rd);
 		}
 		if ( 0 > rd ) {
@@ -508,7 +517,7 @@ int _loadCell_serial_process(int(*func)(u_int8_t *)) {
 
 	for ( ;  INCOMPLETE  == ret_val && 13 > retries; ) {
 		rd = read(_loadCell_serial_fd,buff + bytes_received, sizeof(buff) - bytes_received);
-		if ( 1 <outputDebug  && 0 != rd ) {
+		if ( 10 <outputDebug  && 0 != rd ) {
 			fprintf(stderr,"#  _loadCell_serial_process %3d bytes read.\n",rd);
 		}
 		if ( 0 > rd ) {
@@ -547,7 +556,7 @@ int _serial_process(int serialfd,int(*func)(u_int8_t *)) {
 
 	for ( ; 26 > bytes_received && 13 > retries; ) {
 		rd = read(serialfd,buff + bytes_received, 26 - bytes_received);
-		if ( 1 <outputDebug  && 0 != rd ) {
+		if ( 10 <outputDebug  && 0 != rd ) {
 			fprintf(stderr,"#  _serial_process %3d bytes read.\n",rd);
 		}
 		if ( 0 > rd ) {
@@ -623,6 +632,8 @@ void dummy(void) {
 void update_average_weight( double d ) {
 	if ( averages.n >= averages.loadCell_n ) {
 		snprintf(_loadCell_weight,sizeof(_loadCell_weight),"%0.3lf",d);
+		d -= loadCell_tare;
+		snprintf(torque,sizeof(torque),"%0.6lf",d*torqueFactor);
 		averages.loadCell_n++;
 		averages.AverageWeight *= ( averages.loadCell_n -1);
 		averages.AverageWeight /=  averages.loadCell_n;
@@ -631,13 +642,7 @@ void update_average_weight( double d ) {
 }
 void update_averages( u_int32_t *n,u_int32_t Milliwatts, u_int32_t Millivolts, u_int32_t MilliAmps,
 		u_int32_t *AverageMilliWatts, u_int32_t *AverageMilliVolts, int32_t *AverageMilliAmps ) {
-	long trueMW;
 	averages.n++;
-#if 0
-	if ( 11 == averages.n ) {
-		dummy();
-	}
-#endif
 
 	averages.AverageMilliWatts *= ( averages.n -1);
 	averages.AverageMilliWatts /=  averages.n;
@@ -708,7 +713,7 @@ int process_query(u_int8_t *buff ) {
 	snprintf(_averages_meanWeight,sizeof(_averages_meanWeight),"%0.6lf",averages.AverageWeight);
 	snprintf(_loadCell_n,sizeof(_loadCell_n),"%d",averages.loadCell_n);
 	
-	if ( 0 != outputDebug ) {
+	if ( 10 < outputDebug ) {
 		fprintf(stderr,"#terminal %s Watts\n",_Watts);
 		fprintf(stderr,"#terminal %s Volts\n",_Volts);
 		fprintf(stderr,"#terminal %s Amps\n",_Amps);
@@ -771,24 +776,22 @@ int process_query(u_int8_t *buff ) {
                 exit(1);
         }
 
-        snprintf(timestamp,sizeof(timestamp),"%04d-%02d-%02d %02d:%02d:%02d.%03ld",
-                1900 + now->tm_year,1 + now->tm_mon, now->tm_mday,now->tm_hour,now->tm_min,
-		now->tm_sec,time.tv_usec/1000);
+	generate_timestamp(timestamp,sizeof(timestamp));
 
-	const char *fmt = "\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n";
+	const char *fmt = "\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\n";
 	fprintf(fp_stats,fmt,
 			timestamp,_Argv1,_commandedRPM,
 			_commandedVOLTAGE,_Watts,_Volts,_Amps,
 			_StatusFlag0,_StatusFlag1,
 			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps,
-			_loadCell_weight,_averages_meanWeight,_loadCell_n);
+			_loadCell_weight,_averages_meanWeight,_loadCell_n,loadStarTARE,torque);
 	fflush(fp_stats);
 	fprintf(stderr,fmt,
 			timestamp,_Argv1,_commandedRPM,
 			_commandedVOLTAGE,_Watts,_Volts,_Amps,
 			_StatusFlag0,_StatusFlag1,
 			_averages_n, _averages_meanWatts,_averages_meanVolts,_averages_meanAmps,
-			_loadCell_weight,_averages_meanWeight,_loadCell_n);
+			_loadCell_weight,_averages_meanWeight,_loadCell_n,loadStarTARE,torque);
 	fflush(stderr);
 	if ( 0 == disable_mqtt_output ) {
 		json_object *jobj = json_object_new_object();
@@ -810,6 +813,8 @@ int process_query(u_int8_t *buff ) {
 		json_object_object_add(jobj,"loadCellWeight",json_object_new_string(_loadCell_weight));
 		json_object_object_add(jobj,"meanWeight",json_object_new_string(_averages_meanWeight));
 		json_object_object_add(jobj,"loadCell-n",json_object_new_string(_loadCell_n));
+		json_object_object_add(jobj,"loadCell-tare",json_object_new_string(loadStarTARE));
+		json_object_object_add(jobj,"torque",json_object_new_string(torque));
 		ret_val = _mosquitto_publish_data(jobj);
 		json_object_put(jobj);
 		}
@@ -835,7 +840,9 @@ static double _atof(const u_int8_t *s ) {
 }
 int _process_loadCell_query(u_int8_t *buff ) {
 	if ( 2 < outputDebug ) {
-		fprintf(stderr,"# process_loadCell_query()\n"); fflush(stderr);
+		char timestamp[32] = {};
+		generate_timestamp(timestamp,sizeof(timestamp));
+		fprintf(stderr,"# process_loadCell_query() %s\n",timestamp); fflush(stderr);
 	}
 	double d = _atof(buff);
 	if ( NAN != d ) {
@@ -846,7 +853,6 @@ int _process_loadCell_query(u_int8_t *buff ) {
 }
 void daq_acquire(void) {
         int i;
-	int status;
         int rc = 0;
 	int index,query_index,loadCell_index;
 	struct timeval tv = {0,0,};
@@ -884,11 +890,15 @@ void daq_acquire(void) {
 		gettimeofday(&tv,NULL);
 		index = tv.tv_usec / _usec_divider;	/* compute which hertz  in this second */
 
+		if ( 27 < outputDebug ) {
+			fprintf(stderr,"# index = %d\n",index); fflush(stderr);
+		}
+
 		if ( tv_sec != tv.tv_sec ) {
 			tv_sec = tv.tv_sec;
 			/* start of new second */
 			if ( 0 < duration_countdown ) {
-				query_index = -2;	/* force a _query().  j can never be negative */
+				loadCell_index = query_index = -2;	/* force a _query().  query_index can never be negative */
 			}
 			duration_countdown--;
 			/* go 1 more second of receiving */
@@ -896,11 +906,11 @@ void daq_acquire(void) {
 				break;
 			}
 		}
-		if (  0 == ( index & 1 ) && query_index != index ) {
+		if (  (0 == ( index & 1 )) && query_index != index ) {
 			query_index = index;
 			_query();
 		}
-		if ( 0 != ( index & 1) && loadCell_index != index ) {
+		if ( (0 != ( index & 1)) && loadCell_index != index ) {
 			loadCell_index = index;
 			_loadCell_query();
 		}
@@ -1206,6 +1216,25 @@ void vfd_gs3_shutdown(void) {
 	modbus_close(mb);
 	modbus_free(mb);
 }
+char *_do_pretty( char *s ) {
+	static char buffer[80];
+	memset(buffer,'#',sizeof(buffer)-1);
+	int len = strlen(s);
+	int offset = strlen(buffer) - len -2;
+	offset >>= 1;	/* go to middle */
+	char *p = buffer + offset;
+	*p++ = ' ';
+	for ( ; '\0' != p[0] && '\0' != s[0] ; p++,s++ ) {
+		p[0] = s[0];
+	}
+	*p++ = ' ';
+	return	buffer;
+}
+void close_fp_sstats(void) {
+	fprintf(stderr,"# closing output files\n");
+	fclose(fp_stats);
+	fprintf(stderr,"%s\n", _do_pretty(filename_stats));
+}
 static void signal_handler(int signum) {
 
 
@@ -1216,6 +1245,7 @@ static void signal_handler(int signum) {
 		(void) _mosquitto_publish_exited("SIGALRM");
 		_mosquitto_shutdown();
 		vfd_gs3_shutdown();
+		close_fp_sstats();
                 exit(100);
         } else if ( SIGPIPE == signum ) {
                 fprintf(stderr,"\n# Broken pipe.\n");
@@ -1226,6 +1256,7 @@ static void signal_handler(int signum) {
 		(void) _mosquitto_publish_exited("SIGPIPE");
 		_mosquitto_shutdown();
 		vfd_gs3_shutdown();
+		close_fp_sstats();
                 exit(101);
         } else if ( SIGUSR1 == signum ) {
                 /* clear signal */
@@ -1243,6 +1274,7 @@ static void signal_handler(int signum) {
 		(void) _mosquitto_publish_exited("SIGTERM");
 		_mosquitto_shutdown();
 		vfd_gs3_shutdown();
+		close_fp_sstats();
                 exit(0);
         } else {
                 fprintf(stderr,"\n# Caught unexpected signal %d.\n",signum);
@@ -1253,6 +1285,7 @@ static void signal_handler(int signum) {
 		(void) _mosquitto_publish_exited("UNKNOWN SIGNAL");
 		_mosquitto_shutdown();
 		vfd_gs3_shutdown();
+		close_fp_sstats();
                 exit(102);
         }
 
@@ -1326,6 +1359,53 @@ static int  _loadCell_get_units( void ) {
 	fprintf(stderr,"# %s units\n",loadStarUNIT);
 	return	rc;
 }
+static int _loadCell_get_tare(void ) {
+	char	buffer[32] = {};
+	int rd, rc = 0;
+
+	clear_serial_input(_loadCell_serial_fd);
+	if ( 10 < outputDebug ) {
+		fprintf(stderr,"# _loadCell_get_tare\n"); fflush(stderr);
+	}
+	usleep(200000);
+	write(_loadCell_serial_fd,_loadCell_set_tare,strlen(_loadCell_set_tare));
+	usleep(400000);
+	alarm(0);
+	if ( 0 != (rd = read(_loadCell_serial_fd,buffer,sizeof(buffer)))) {	/* wait for input */
+		if ( 10 < outputDebug ) {
+			fprintf(stderr,"# _loadCell_get_tare(bytes read = %d)\n",rd); fflush(stderr);
+		}
+		if ( 0 != strstr(buffer,"Tared")) {
+			tared_flag++;
+			if ( 10 < outputDebug ) {
+				fprintf(stderr,"# _loadCell_get_tare(tared_flag++)\n"); fflush(stderr);
+			}
+			/* now see what tared means */
+			_loadCell_query();
+			if ( 10 < outputDebug ) {
+				fprintf(stderr,"# _loadCell_get_tare(_loadCell_query())\n"); fflush(stderr);
+			}
+			usleep(100000);
+                        rc = _loadCell_serial_process(_process_loadCell_query);
+			if ( 0 == rc ) {
+				loadCell_tare = atof(_loadCell_weight);
+				snprintf(loadStarTARE,sizeof(loadStarTARE),"%0.6lf",loadCell_tare);
+				if ( 10 < outputDebug ) {
+					fprintf(stderr,"# _loadCell_get_tare(_loadCell_query(SUCCESS))\n"); fflush(stderr);
+				}
+			} else {
+				if ( 10 < outputDebug ) {
+					fprintf(stderr,"# _loadCell_get_tare(_loadCell_query(FAILED))\n"); fflush(stderr);
+				}
+			}
+		}
+		if ( 10 < outputDebug ) {
+			fprintf(stderr,"# _loadCell_get_tare(bytes read = %d)\n",rd); fflush(stderr);
+		}
+	}
+	return	rc;
+
+}
 int start_up_loadCell_device(void) {
 	int ret_val  = 0;
         int serialfd = open (loadCell_device, O_RDWR | O_NOCTTY | O_SYNC);
@@ -1343,6 +1423,10 @@ int start_up_loadCell_device(void) {
 	if ( ret_val = _loadCell_get_units() ) {
 		goto GoodBye;
 	}
+	if ( ret_val = _loadCell_get_tare() ) {
+		goto GoodBye;
+	}
+
 
 
 
@@ -1657,25 +1741,9 @@ void print_labels(FILE *out ) {
 	char buffer[256];
 	fprintf(out,"# tests available: %s\n#\n",get_t_configs_labels(buffer,sizeof(buffer)));
 }
-char *_do_pretty( char *s ) {
-	static char buffer[80];
-	memset(buffer,'#',sizeof(buffer)-1);
-	int len = strlen(s);
-	int offset = strlen(buffer) - len -2;
-	offset >>= 1;	/* go to middle */
-	char *p = buffer + offset;
-	*p++ = ' ';
-	for ( ; '\0' != p[0] && '\0' != s[0] ; p++,s++ ) {
-		p[0] = s[0];
-	}
-	*p++ = ' ';
-	return	buffer;
-}
 
 int main (int argc, char **argv) {
 	int i,n;
-	int ret;
-	char filename_stats[1024];
 	struct timeval tv;
 	capture_cmd_line(argc,argv);
 
@@ -1759,6 +1827,12 @@ int main (int argc, char **argv) {
 		}
 	}
 
+	generate_buffs();
+
+	if ( start_up_loadCell_device()) {
+		return	1;
+	}
+
 	if ( 2 > (argc - optind) ) {
 		fprintf(stderr,"dynoWT <outputFilenamePrefix> <test_config> [options || --help]\n");
 		exit(1);
@@ -1783,7 +1857,6 @@ int main (int argc, char **argv) {
 		return	1;
 	}
 
-	generate_buffs();
 
 	if ( 0 == daq_device || '\0' == daq_device[0] ) {
 		fprintf(stderr,"# --daq-device cannot be empty.\n");
@@ -1816,10 +1889,6 @@ int main (int argc, char **argv) {
 
 	fprintf(stderr,"# %s is optional!\n",loadCell_device);
 
-	if ( start_up_loadCell_device()) {
-		return	1;
-	}
-
 	fprintf(stderr,"# connecting to GS3 VFD via Modbus (%s:%d address %d)\n",modbus_host,modbus_port,modbus_slave);
 	if ( 0 != vfd_connect() ) {
 		fprintf(stderr,"# unable to connect to VFD. Terminating.\n");
@@ -1846,7 +1915,7 @@ int main (int argc, char **argv) {
 	fprintf(fp_stats,"# %s units\n#\n",loadStarUNIT);
 	fprintf(fp_stats,
 			"# timestamp,argv[1],RPM,loadVolts,Watts,Volts,Amps,statusFlag0,statusFlag1,"
-			"n,meanWatts,meanVolts,meanAmps,weight,meanWeight,n,\n");
+			"n,meanWatts,meanVolts,meanAmps,weight,meanWeight,n,tare,torque,\n");
 	int rpm;
 	int voltage;
 
@@ -1883,9 +1952,7 @@ int main (int argc, char **argv) {
 	fprintf(stderr,"# Load0 shutdown successful!\n");
 
 	/* close output file */
-	fprintf(stderr,"# closing output files\n");
-	fclose(fp_stats);
-	fprintf(stderr,"%s\n",_do_pretty(filename_stats));
+	close_fp_sstats();
 
 	vfd_gs3_shutdown();
 

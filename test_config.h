@@ -30,6 +30,8 @@ TEST_CONFIG t_configs[] = {
 	200, /*VOLTAGE_WAIT;  milliseconds to wait for load to reach milliVolts */
 	0, /* SAMPLING_DURATION; seconds */
 	0, /* SAMPLING_HERTZ; samples per second */
+	"localhost", /*MQTT_HOST*/
+	"dynoWT1x", /*MQTT_TOPIC*/
 	},
 	{
 	"24Fast", /*label*/
@@ -43,6 +45,8 @@ TEST_CONFIG t_configs[] = {
 	200, /*VOLTAGE_WAIT;  milliseconds to wait for load to reach milliVolts */
 	0, /* SAMPLING_DURATION; seconds */
 	0, /* SAMPLING_HERTZ; samples per second */
+	"localhost", /*MQTT_HOST*/
+	"dynoWT1x", /*MQTT_TOPIC*/
 	},
 	{
 	"24Faster", /*label*/
