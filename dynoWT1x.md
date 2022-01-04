@@ -9,15 +9,7 @@ applying.
 ## Build
 
 ```
-sudo su
-
-apt-get install libjson-c-dev
-apt-get install libmosquitto-dev
-apt-get install mosquitto
-apt-get install mosquitto-clients
-apt-get install libmodbus-dev
-
-exit
+sudo apt-get install libjson-c-dev libmosquitto-dev mosquitto mosquitto-clients libmodbus-dev
 
 make
 ```
