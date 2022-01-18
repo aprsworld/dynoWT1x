@@ -17,7 +17,7 @@ make
 The make will create two directories, `bin/` and `doc/` if necessary and then attempt to
 compile `dynoWT1x.c` into `bin/dynoWT1x`.
 
-## test_config.h
+## dynoWT1x_sweep_configurations.h
 
 contains an array test configuration structures.  The structure contains:
 
@@ -131,7 +131,7 @@ will be used.  The allowed hertz are 1, 2, 4, 5, 8, and 10.  The *only* prime fa
 Therefore the only allowed Hertz must 1 and/or some number where 2 and/or 5 are its factors.  The next candidate is
 16.
 
-## Editting test_config.h
+## Editting dynoWT1x_sweep_configurations.h
 
 
 `/* DO NOT CHANGE ANYTHING ABOVE THIS LINE */` literally means what is says.

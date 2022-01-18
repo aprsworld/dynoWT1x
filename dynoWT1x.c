@@ -30,7 +30,7 @@ LoadStart   partially
 #include <fcntl.h>
 
 #include <modbus.h>
-#include "test_config.h"
+#include "dynoWT1x_sweep_configurations.h"
 #include "MillionFractions.h"
 #include <time.h>
 #include <json.h>
@@ -120,7 +120,7 @@ FILE *fp_stats;
 
 
 /* dyno sweep specifications */
-/* see test_config.h */
+/* see dynoWT1x_sweep_configurations.h */
 int generate_timestamp(char *d, int len ) {
 
 	struct tm *now;

@@ -81,6 +81,38 @@ TEST_CONFIG t_configs[] = {
 	"localhost", /* MQTT_HOST*/
 	"dynoWT1x",  /* MQTT_TOPIC*/
 	},
+
+	{
+	"single-12",  /* test label */
+	1000,        /* DYNO_RPM_START;  RPM */
+	1000,        /* DYNO_RPM_END;  RPM to end at */
+	100,         /* DYNO_RPM_STEP;  RPM step size */
+	2,           /* DYNO_RPM_WAIT;  seconds to wait for dyno to reach RPM */
+	12500,       /* VOLTAGE_START;  millivolts  */
+	12500,       /* VOLTAGE_END;  millivolts to end at */
+	1000,        /* VOLTAGE_STEP;  millivolts step size */
+	200,         /* VOLTAGE_WAIT;  milliseconds to wait for load to reach millivolts */
+	3,           /* SAMPLING_DURATION; seconds */
+	10,          /* SAMPLING_HERTZ; samples per second */
+	"localhost", /* MQTT_HOST*/
+	"dynoWT1x",  /* MQTT_TOPIC*/
+	},
+
+	{
+	"single-48", /* test label */
+	1000,        /* DYNO_RPM_START;  RPM */
+	1000,        /* DYNO_RPM_END;  RPM to end at */
+	100,         /* DYNO_RPM_STEP;  RPM step size */
+	2,           /* DYNO_RPM_WAIT;  seconds to wait for dyno to reach RPM */
+	50000,       /* VOLTAGE_START;  millivolts  */
+	50000,       /* VOLTAGE_END;  millivolts to end at */
+	1000,        /* VOLTAGE_STEP;  millivolts step size */
+	200,         /* VOLTAGE_WAIT;  milliseconds to wait for load to reach millivolts */
+	3,           /* SAMPLING_DURATION; seconds */
+	10,          /* SAMPLING_HERTZ; samples per second */
+	"localhost", /* MQTT_HOST*/
+	"dynoWT1x",  /* MQTT_TOPIC*/
+	},
 	
 	/* SAMPLE t_config entry that can be copied used to start a new entry */
 	{
