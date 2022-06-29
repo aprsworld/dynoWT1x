@@ -70,6 +70,9 @@ switch|Required/Optional|argument|description
 --mqtt-port|OPTIONAL|number|default is 1883
 --mqtt-user-name|OPTIONAL|user login|mqtt server may require this
 --mqtt-password|OPTIONAL|password|mqtt server may require this
+--modbus-host|OPTIONAL|qualified host|modbus host operating modbus server
+--modbus-port|OPTIONAL|number|default is 502
+--modbus-slave|OPTIONAL|number|default is 1
 
 ## Command line parameters
 

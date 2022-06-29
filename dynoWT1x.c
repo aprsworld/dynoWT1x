@@ -36,9 +36,10 @@ LoadStart   partially
 #include <json.h>
 #include <mosquitto.h>
 
-#define modbus_host "192.168.10.228"
-#define modbus_port 502
-#define modbus_slave 1
+static char *_modbus_host = "192.168.10.228";
+static int _modbus_port = 502;
+static int _modbus_slave = 1;
+
 int outputDebug;
 static int _overrideFlag;
 char cmd_line[1024];
@@ -85,6 +86,9 @@ enum arguments {
 	A_mqtt_port,
 	A_mqtt_user_name,
 	A_mqtt_password,
+	A_modbus_host,
+	A_modbus_port,
+	A_modbus_slave,
 };
 
 int mqtt_port = 1883;
@@ -339,7 +343,7 @@ int _mosquitto_publish_run_config(void ) {
 
 int vfd_connect() {
 	/* connect to modbus gateway */
-	mb = modbus_new_tcp(modbus_host, modbus_port);
+	mb = modbus_new_tcp(_modbus_host, _modbus_port);
 
 //	modbus_set_debug(mb,TRUE);
 	modbus_set_error_recovery(mb,MODBUS_ERROR_RECOVERY_LINK);
@@ -356,7 +360,7 @@ int vfd_connect() {
 	}
 
 	/* set slave address of device we want to talk to */
-	if ( 0 != modbus_set_slave(mb,modbus_slave) ) {
+	if ( 0 != modbus_set_slave(mb,_modbus_slave) ) {
 		fprintf(stderr,"# modbus_set_slave() failed: %s\n", modbus_strerror(errno));
 		modbus_free(mb);
 		return -3;
@@ -1717,7 +1721,7 @@ char  *get_t_configs_labels(char *d, int len ) {
 
 }
 int _check_override(int n ) {
-	if ( n > X_override_cutoff ) {
+	if ( 0 == _overrideFlag && n > X_override_cutoff ) {
 		switch( n ) {
 			case A_daq_device:
 				fprintf(stderr,"--daq-device requites override\n");	break;
@@ -1731,6 +1735,12 @@ int _check_override(int n ) {
 				fprintf(stderr,"--mqtt-user-name requites override\n");	break;
 			case A_mqtt_password:
 				fprintf(stderr,"--mqtt-password requites override\n");	break;
+			case A_modbus_host:	
+				fprintf(stderr,"--modbus-host requites override\n");	break;
+			case A_modbus_port:
+				fprintf(stderr,"--modbus-port requites override\n");	break;
+			case A_modbus_slave:
+				fprintf(stderr,"--modbus-slave requites override\n");	break;
 		}
 
 		n = A_help;
@@ -1761,6 +1771,9 @@ int main (int argc, char **argv) {
 		        {"mqtt-port",                        1,                 0, A_mqtt_port },
 		        {"mqtt-user-name",                   1,                 0, A_mqtt_user_name },
 		        {"mqtt-passwd",                      1,                 0, A_mqtt_password },
+		        {"modbus-host",                      1,                 0, A_modbus_host },
+		        {"modbus-port",                      1,                 0, A_modbus_port },
+		        {"modbus-slave",                     1,                 0, A_modbus_slave },
 		        {"verbose-level",                    1,                 0, A_verbose_level, },
 			{"override",                         no_argument,       0, A_override, },
 			{"verbose",                          no_argument,       0, A_verbose, },
@@ -1803,6 +1816,15 @@ int main (int argc, char **argv) {
 		case A_mqtt_password:
 			mqtt_passwd = strsave(optarg);
 			break;
+		case A_modbus_host:
+			_modbus_host = strsave(optarg);
+			break;
+		case A_modbus_port:
+			_modbus_port = atoi(optarg);
+			break;
+		case A_modbus_slave:
+			_modbus_slave = atoi(optarg);
+			break;
 		case	'?':
 		case A_help:
 			fprintf(stdout,"%s\n",_do_pretty("help"));
@@ -1820,6 +1842,11 @@ int main (int argc, char **argv) {
 			fprintf(stdout,"# --mqtt-port\t\tThe port where the mosquitto server listens.\n");
 			fprintf(stdout,"# --mqtt-user-name\tSome mosquitto servers require a user name.\n");
 			fprintf(stdout,"# --mqtt-password\tSome mosquitto servers require a password.\n");
+			fprintf(stdout,"# --modbus-host\t\tThe network name or ip address of the modbus host default=%s\n",
+					_modbus_host);
+			fprintf(stdout,"# --modbus-port\t\tThe port where the modbus server listens.  default=%d\n",
+					_modbus_port);
+			fprintf(stdout,"# --modbus-slave\tDefault=%d\n", _modbus_slave);
 			fprintf(stdout,"%s\n",_do_pretty("end --override"));
 			print_labels(stdout);
 			fprintf(stdout,"%s\n",_do_pretty("end help"));
@@ -1889,7 +1916,7 @@ int main (int argc, char **argv) {
 
 	fprintf(stderr,"# %s is optional!\n",loadCell_device);
 
-	fprintf(stderr,"# connecting to GS3 VFD via Modbus (%s:%d address %d)\n",modbus_host,modbus_port,modbus_slave);
+	fprintf(stderr,"# connecting to GS3 VFD via Modbus (%s:%d address %d)\n",_modbus_host,_modbus_port,_modbus_slave);
 	if ( 0 != vfd_connect() ) {
 		fprintf(stderr,"# unable to connect to VFD. Terminating.\n");
 		exit(2);
